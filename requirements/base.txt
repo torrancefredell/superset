@@ -272,7 +272,7 @@ packaging==25.0
     #   limits
     #   marshmallow
     #   shillelagh
-pandas==2.1.4
+pandas==2.3.3
     # via apache-superset (pyproject.toml)
 paramiko==3.5.1
     # via

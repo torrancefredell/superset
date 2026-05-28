@@ -630,7 +630,7 @@ packaging==25.0
     #   pytest
     #   shillelagh
     #   sqlalchemy-bigquery
-pandas==2.1.4
+pandas==2.3.3
     # via
     #   -c requirements/base-constraint.txt
     #   apache-superset
