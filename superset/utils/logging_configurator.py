@@ -18,7 +18,6 @@ import abc
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
-import flask.app
 import flask.config
 
 logger = logging.getLogger(__name__)
