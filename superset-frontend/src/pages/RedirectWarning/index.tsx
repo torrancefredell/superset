@@ -28,7 +28,12 @@ import {
   Typography,
 } from '@superset-ui/core/components';
 import { Icons } from '@superset-ui/core/components/Icons';
-import { getTargetUrl, isUrlTrusted, trustUrl, isAllowedScheme } from './utils';
+import {
+  getTargetUrl,
+  isUrlTrusted,
+  trustUrl,
+  sanitizeRedirectUrl,
+} from './utils';
 
 const PageContainer = styled(Flex)`
   ${({ theme }) => css`
@@ -95,33 +100,37 @@ export default function RedirectWarning() {
   const [trustChecked, setTrustChecked] = useState(false);
 
   const targetUrl = useMemo(() => getTargetUrl(), []);
+  const safeRedirectUrl = useMemo(
+    () => (targetUrl ? sanitizeRedirectUrl(targetUrl) : null),
+    [targetUrl],
+  );
 
   // Redirect immediately if the URL is already trusted
   useEffect(() => {
-    if (targetUrl && isAllowedScheme(targetUrl) && isUrlTrusted(targetUrl)) {
-      window.location.href = targetUrl;
+    if (safeRedirectUrl && isUrlTrusted(safeRedirectUrl)) {
+      window.location.href = safeRedirectUrl;
     }
-  }, [targetUrl]);
+  }, [safeRedirectUrl]);
 
   const handleContinue = useCallback(() => {
-    if (!targetUrl || !isAllowedScheme(targetUrl)) return;
+    if (!safeRedirectUrl) return;
     if (trustChecked) {
-      trustUrl(targetUrl);
+      trustUrl(safeRedirectUrl);
     }
-    window.location.href = targetUrl;
-  }, [trustChecked, targetUrl]);
+    window.location.href = safeRedirectUrl;
+  }, [trustChecked, safeRedirectUrl]);
 
   const handleReturn = useCallback(() => {
     window.location.href = '/';
   }, []);
 
-  if (!targetUrl) {
+  if (!targetUrl || !safeRedirectUrl) {
     return (
       <PageContainer justify="center" align="center">
         <WarningCard>
           <WarningBody>
             <Typography.Text type="danger">
-              {t('Missing URL parameter')}
+              {t(!targetUrl ? 'Missing URL parameter' : 'Invalid or unsafe URL')}
             </Typography.Text>
           </WarningBody>
         </WarningCard>

@@ -17,7 +17,13 @@
  * under the License.
  */
 
-import { isAllowedScheme, getTargetUrl, isUrlTrusted, trustUrl } from './utils';
+import {
+  isAllowedScheme,
+  getTargetUrl,
+  isUrlTrusted,
+  trustUrl,
+  sanitizeRedirectUrl,
+} from './utils';
 
 const TRUSTED_URLS_KEY = 'superset_trusted_urls';
 
@@ -52,8 +58,12 @@ test('isAllowedScheme blocks file: URLs', () => {
   expect(isAllowedScheme('file:///etc/passwd')).toBe(false);
 });
 
-test('isAllowedScheme allows relative URLs (unparseable as absolute)', () => {
-  expect(isAllowedScheme('/dashboard/1')).toBe(true);
+test('isAllowedScheme rejects relative URLs (unparseable as absolute)', () => {
+  expect(isAllowedScheme('/dashboard/1')).toBe(false);
+});
+
+test('isAllowedScheme rejects protocol-relative URLs', () => {
+  expect(isAllowedScheme('//evil.com')).toBe(false);
 });
 
 test('getTargetUrl reads the url query parameter', () => {
@@ -121,4 +131,37 @@ test('trustUrl caps storage at 100 entries', () => {
   expect(stored.length).toBeLessThanOrEqual(100);
   // The most recent entries should be kept
   expect(stored).toContain('https://example104.com');
+});
+
+test('sanitizeRedirectUrl returns canonicalized href for http URLs', () => {
+  expect(sanitizeRedirectUrl('http://example.com')).toBe('http://example.com/');
+});
+
+test('sanitizeRedirectUrl returns canonicalized href for https URLs', () => {
+  expect(sanitizeRedirectUrl('https://example.com/page?q=1')).toBe(
+    'https://example.com/page?q=1',
+  );
+});
+
+test('sanitizeRedirectUrl returns null for javascript: URLs', () => {
+  // oxlint-disable-next-line no-script-url -- testing that dangerous schemes are blocked
+  expect(sanitizeRedirectUrl('javascript:alert(1)')).toBeNull();
+});
+
+test('sanitizeRedirectUrl returns null for data: URLs', () => {
+  expect(
+    sanitizeRedirectUrl('data:text/html,<script>alert(1)</script>'),
+  ).toBeNull();
+});
+
+test('sanitizeRedirectUrl returns null for protocol-relative URLs', () => {
+  expect(sanitizeRedirectUrl('//evil.com')).toBeNull();
+});
+
+test('sanitizeRedirectUrl returns null for relative paths', () => {
+  expect(sanitizeRedirectUrl('/dashboard/1')).toBeNull();
+});
+
+test('sanitizeRedirectUrl returns null for empty string', () => {
+  expect(sanitizeRedirectUrl('')).toBeNull();
 });

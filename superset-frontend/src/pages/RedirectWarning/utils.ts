@@ -42,8 +42,24 @@ export function isAllowedScheme(url: string): boolean {
     const parsed = new URL(url);
     return ALLOWED_SCHEMES.includes(parsed.protocol);
   } catch {
-    // relative URLs or unparseable — allow (they'll resolve against current origin)
-    return true;
+    return false;
+  }
+}
+
+/**
+ * Validate and sanitize a URL for safe redirection.
+ * Returns the canonicalized href when the scheme is allowed, or null otherwise.
+ * Reconstructing via URL.href breaks taint propagation from raw user input.
+ */
+export function sanitizeRedirectUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (!ALLOWED_SCHEMES.includes(parsed.protocol)) {
+      return null;
+    }
+    return parsed.href;
+  } catch {
+    return null;
   }
 }
 
