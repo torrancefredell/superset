@@ -59,7 +59,7 @@
  * 4. Run npm publish with appropriate access rights
  */
 
-const { spawn, execSync } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -69,9 +69,24 @@ const isStdio = args.includes('--stdio') || process.env.FASTMCP_TRANSPORT === 's
 const isDebug = args.includes('--debug') || process.env.MCP_DEBUG === '1';
 const showHelp = args.includes('--help') || args.includes('-h');
 
-// Configuration
-const DEFAULT_PORT = process.env.MCP_PORT || '5008';
-const DEFAULT_HOST = process.env.MCP_HOST || '127.0.0.1';
+// Configuration with input validation for environment-derived values
+function sanitizePort(value) {
+    const port = parseInt(value, 10);
+    if (Number.isNaN(port) || port < 1 || port > 65535) {
+        throw new Error(`Invalid port number: ${value}`);
+    }
+    return String(port);
+}
+
+function sanitizeHost(value) {
+    if (!/^[a-zA-Z0-9._-]+$/.test(value)) {
+        throw new Error(`Invalid host: ${value}`);
+    }
+    return value;
+}
+
+const DEFAULT_PORT = sanitizePort(process.env.MCP_PORT || '5008');
+const DEFAULT_HOST = sanitizeHost(process.env.MCP_HOST || '127.0.0.1');
 
 // Show help
 if (showHelp) {
@@ -158,7 +173,7 @@ function findPython() {
 
     // Check if python3 is available
     try {
-        execSync('python3 --version', { stdio: 'ignore' });
+        execFileSync('python3', ['--version'], { stdio: 'ignore' });
         return 'python3';
     } catch (e) {
         // Fall back to python
@@ -176,7 +191,7 @@ function checkEnvironment() {
 
     // Check if Superset is installed
     try {
-        execSync(`${python} -c "import superset"`, {
+        execFileSync(python, ['-c', 'import superset'], {
             env: { ...process.env, PYTHONPATH: supersetRoot },
             stdio: 'ignore'
         });
@@ -227,12 +242,16 @@ function main() {
     } else {
         console.error(`Starting Superset MCP server in HTTP mode on ${DEFAULT_HOST}:${DEFAULT_PORT}...`);
 
-        // Parse port and host from arguments
+        // Parse and validate port and host from arguments
         const portIndex = args.indexOf('--port');
-        const port = portIndex !== -1 && args[portIndex + 1] ? args[portIndex + 1] : DEFAULT_PORT;
+        const port = portIndex !== -1 && args[portIndex + 1]
+            ? sanitizePort(args[portIndex + 1])
+            : DEFAULT_PORT;
 
         const hostIndex = args.indexOf('--host');
-        const host = hostIndex !== -1 && args[hostIndex + 1] ? args[hostIndex + 1] : DEFAULT_HOST;
+        const host = hostIndex !== -1 && args[hostIndex + 1]
+            ? sanitizeHost(args[hostIndex + 1])
+            : DEFAULT_HOST;
 
         pythonArgs = [
             '-m', 'superset',
