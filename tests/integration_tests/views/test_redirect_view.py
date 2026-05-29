@@ -48,7 +48,9 @@ class TestRedirectView(SupersetTestCase):
             follow_redirects=False,
         )
         assert resp.status_code == 302
-        assert resp.headers["Location"] == "http://localhost:8088/dashboard/1"
+        # The redirect must use only the path component, not the raw user input
+        assert resp.headers["Location"].endswith("/dashboard/1")
+        assert "localhost:8088" not in resp.headers["Location"]
 
     @with_feature_flags(ALERT_REPORTS=True)
     @with_config(REDIRECT_CONFIG)
