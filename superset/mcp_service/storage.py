@@ -115,11 +115,11 @@ def _create_redis_store(
         )
         return None
 
-    try:
-        # Parse URL to handle SSL properly
-        parsed = urlparse(redis_url)
-        use_ssl = parsed.scheme == "rediss"
+    # Parse URL before try block so hostname is available in error handling
+    parsed = urlparse(redis_url)
+    use_ssl = parsed.scheme == "rediss"
 
+    try:
         # RedisStore doesn't handle SSL from URL - it parses URL manually
         # and ignores the scheme. We must create the Redis client ourselves.
 
@@ -178,8 +178,8 @@ def _create_redis_store(
         store = wrapper_class(key_value=redis_store, prefix=prefix)
         logger.info("Created wrapped MCP RedisStore")
         return store
-    except Exception as e:
-        logger.error("Failed to create MCP store: %s", e)
+    except Exception:
+        logger.error("Failed to create MCP store for host: %s", parsed.hostname)
         return None
 
 
