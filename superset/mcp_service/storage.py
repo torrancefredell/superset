@@ -27,11 +27,36 @@ Reusable across caching middleware, OAuth providers, EventStore, etc.
 import logging
 from importlib import import_module
 from typing import Any, Callable, Dict
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from redis.asyncio import Redis
 
 logger = logging.getLogger(__name__)
+
+
+def _redact_url(url: str) -> str:
+    """Return a URL with username and password replaced by '***'."""
+    parsed = urlparse(url)
+    if not parsed.password and not parsed.username:
+        return url
+    netloc = (
+        "***:***@"
+        + (parsed.hostname or "")
+        + (f":{parsed.port}" if parsed.port else "")
+    )
+    return urlunparse(parsed._replace(netloc=netloc))
+
+
+def _sanitize_exception(exc: Exception, url: str) -> str:
+    """Remove credentials from an exception message using the given URL."""
+    msg = str(exc)
+    parsed = urlparse(url)
+    msg = msg.replace(url, _redact_url(url))
+    if parsed.password:
+        msg = msg.replace(parsed.password, "***")
+    if parsed.username:
+        msg = msg.replace(parsed.username, "***")
+    return msg
 
 
 def get_mcp_store(
@@ -179,7 +204,8 @@ def _create_redis_store(
         logger.info("Created wrapped MCP RedisStore")
         return store
     except Exception as e:
-        logger.error("Failed to create MCP store: %s", e)
+        sanitized_msg = _sanitize_exception(e, redis_url) if redis_url else str(e)
+        logger.error("Failed to create MCP store: %s", sanitized_msg)
         return None
 
 
