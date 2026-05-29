@@ -536,41 +536,205 @@ def markdown(raw: str, markup_wrap: bool | None = False) -> str:
     return safe
 
 
-def sanitize_svg_content(svg_content: str) -> str:
-    """Basic SVG protection - remove obvious XSS vectors, trust admin input otherwise.
+_SAFE_SVG_TAGS: set[str] = {
+    "svg",
+    "g",
+    "defs",
+    "symbol",
+    "use",
+    "rect",
+    "circle",
+    "ellipse",
+    "line",
+    "polyline",
+    "polygon",
+    "path",
+    "text",
+    "tspan",
+    "textPath",
+    "image",
+    "clipPath",
+    "mask",
+    "pattern",
+    "linearGradient",
+    "radialGradient",
+    "stop",
+    "filter",
+    "feGaussianBlur",
+    "feOffset",
+    "feBlend",
+    "feColorMatrix",
+    "feComposite",
+    "feFlood",
+    "feMerge",
+    "feMergeNode",
+    "title",
+    "desc",
+    "metadata",
+    "animate",
+    "animateTransform",
+    "animateMotion",
+    "set",
+    "marker",
+    "foreignObject",
+}
 
-    Minimal protection approach that removes scripts and javascript: URLs while
-    preserving all legitimate SVG features. Assumes admin-provided content.
+_SAFE_SVG_ATTRS: dict[str, set[str]] = {
+    "*": {
+        "id",
+        "class",
+        "style",
+        "transform",
+        "opacity",
+        "fill",
+        "fill-opacity",
+        "fill-rule",
+        "stroke",
+        "stroke-width",
+        "stroke-opacity",
+        "stroke-linecap",
+        "stroke-linejoin",
+        "stroke-dasharray",
+        "stroke-dashoffset",
+        "clip-path",
+        "clip-rule",
+        "mask",
+        "filter",
+        "color",
+        "display",
+        "visibility",
+        "font-family",
+        "font-size",
+        "font-style",
+        "font-weight",
+        "text-anchor",
+        "text-decoration",
+        "dominant-baseline",
+        "alignment-baseline",
+        "letter-spacing",
+        "word-spacing",
+        "writing-mode",
+        "direction",
+    },
+    "svg": {
+        "xmlns",
+        "xmlns:xlink",
+        "viewBox",
+        "width",
+        "height",
+        "preserveAspectRatio",
+        "version",
+        "x",
+        "y",
+    },
+    "rect": {"x", "y", "width", "height", "rx", "ry"},
+    "circle": {"cx", "cy", "r"},
+    "ellipse": {"cx", "cy", "rx", "ry"},
+    "line": {"x1", "y1", "x2", "y2"},
+    "polyline": {"points"},
+    "polygon": {"points"},
+    "path": {"d"},
+    "text": {"x", "y", "dx", "dy", "rotate", "textLength", "lengthAdjust"},
+    "tspan": {"x", "y", "dx", "dy", "rotate", "textLength", "lengthAdjust"},
+    "textPath": {"href", "startOffset", "method", "spacing"},
+    "image": {"href", "x", "y", "width", "height", "preserveAspectRatio"},
+    "use": {"href", "x", "y", "width", "height"},
+    "linearGradient": {
+        "x1",
+        "y1",
+        "x2",
+        "y2",
+        "gradientUnits",
+        "gradientTransform",
+        "spreadMethod",
+    },
+    "radialGradient": {
+        "cx",
+        "cy",
+        "r",
+        "fx",
+        "fy",
+        "gradientUnits",
+        "gradientTransform",
+        "spreadMethod",
+    },
+    "stop": {"offset", "stop-color", "stop-opacity"},
+    "clipPath": {"clipPathUnits"},
+    "mask": {"x", "y", "width", "height", "maskUnits", "maskContentUnits"},
+    "pattern": {
+        "x",
+        "y",
+        "width",
+        "height",
+        "patternUnits",
+        "patternContentUnits",
+        "patternTransform",
+    },
+    "filter": {"x", "y", "width", "height", "filterUnits", "primitiveUnits"},
+    "feGaussianBlur": {"in", "stdDeviation", "result"},
+    "feOffset": {"in", "dx", "dy", "result"},
+    "feBlend": {"in", "in2", "mode", "result"},
+    "feColorMatrix": {"in", "type", "values", "result"},
+    "feComposite": {"in", "in2", "operator", "k1", "k2", "k3", "k4", "result"},
+    "feFlood": {"flood-color", "flood-opacity", "result"},
+    "feMerge": {"result"},
+    "feMergeNode": {"in"},
+    "animate": {
+        "attributeName",
+        "from",
+        "to",
+        "dur",
+        "begin",
+        "end",
+        "repeatCount",
+        "values",
+        "keyTimes",
+        "calcMode",
+    },
+    "animateTransform": {
+        "attributeName",
+        "type",
+        "from",
+        "to",
+        "dur",
+        "begin",
+        "end",
+        "repeatCount",
+        "values",
+    },
+    "animateMotion": {"dur", "begin", "end", "repeatCount", "path", "keyPoints"},
+    "marker": {
+        "markerWidth",
+        "markerHeight",
+        "refX",
+        "refY",
+        "orient",
+        "markerUnits",
+    },
+}
+
+
+def sanitize_svg_content(svg_content: str) -> str:
+    """Sanitize SVG content using nh3, a parser-based HTML sanitizer.
+
+    Uses an allowlist of safe SVG tags and attributes to strip dangerous
+    content (scripts, event handlers, javascript: URLs, etc.) while
+    preserving legitimate SVG features.
 
     Args:
         svg_content: Raw SVG content string
 
     Returns:
-        str: SVG content with obvious XSS vectors removed
+        str: Sanitized SVG content with dangerous elements removed
     """
     if not svg_content or not svg_content.strip():
         return ""
 
-    # Minimal protection: remove obvious malicious content, preserve all SVG features
-    content = re.sub(
-        r"<script[^>]*>.*?</script>", "", svg_content, flags=re.IGNORECASE | re.DOTALL
+    return nh3.clean(
+        svg_content,
+        tags=_SAFE_SVG_TAGS,
+        attributes=_SAFE_SVG_ATTRS,
     )
-    content = re.sub(r"javascript:", "", content, flags=re.IGNORECASE)
-    content = re.sub(r"data:[^;]*;[^,]*,.*javascript", "", content, flags=re.IGNORECASE)
-
-    # Remove event handlers (simple catch-all approach)
-    content = re.sub(r"\bon\w+\s*=", "", content, flags=re.IGNORECASE)
-
-    # Remove other suspicious patterns
-    content = re.sub(
-        r"<iframe[^>]*>.*?</iframe>", "", content, flags=re.IGNORECASE | re.DOTALL
-    )
-    content = re.sub(
-        r"<object[^>]*>.*?</object>", "", content, flags=re.IGNORECASE | re.DOTALL
-    )
-    content = re.sub(r"<embed[^>]*>", "", content, flags=re.IGNORECASE)
-
-    return content
 
 
 def sanitize_url(url: str) -> str:
