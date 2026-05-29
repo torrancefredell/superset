@@ -25,6 +25,7 @@ Reusable across caching middleware, OAuth providers, EventStore, etc.
 """
 
 import logging
+import re
 from importlib import import_module
 from typing import Any, Callable, Dict
 from urllib.parse import urlparse
@@ -32,6 +33,9 @@ from urllib.parse import urlparse
 from redis.asyncio import Redis
 
 logger = logging.getLogger(__name__)
+
+# Pattern to match credentials in URLs (e.g. redis://user:pass@host)
+_URL_CREDENTIALS_RE = re.compile(r"://[^@/]*@")
 
 
 def get_mcp_store(
@@ -115,6 +119,9 @@ def _create_redis_store(
         )
         return None
 
+    # Build a redacted URL for safe logging (strip username/password)
+    redacted_url = _URL_CREDENTIALS_RE.sub("://***@", redis_url)
+
     try:
         # Parse URL to handle SSL properly
         parsed = urlparse(redis_url)
@@ -178,8 +185,8 @@ def _create_redis_store(
         store = wrapper_class(key_value=redis_store, prefix=prefix)
         logger.info("Created wrapped MCP RedisStore")
         return store
-    except Exception as e:
-        logger.error("Failed to create MCP store: %s", e)
+    except Exception:
+        logger.error("Failed to create MCP store for URL: %s", redacted_url)
         return None
 
 
