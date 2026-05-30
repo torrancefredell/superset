@@ -537,40 +537,198 @@ def markdown(raw: str, markup_wrap: bool | None = False) -> str:
 
 
 def sanitize_svg_content(svg_content: str) -> str:
-    """Basic SVG protection - remove obvious XSS vectors, trust admin input otherwise.
+    """Sanitize SVG content using nh3 to remove XSS vectors.
 
-    Minimal protection approach that removes scripts and javascript: URLs while
-    preserving all legitimate SVG features. Assumes admin-provided content.
+    Uses a parser-based allowlist approach via nh3 instead of regex-based
+    filtering, which cannot reliably parse HTML/SVG.
 
     Args:
         svg_content: Raw SVG content string
 
     Returns:
-        str: SVG content with obvious XSS vectors removed
+        str: SVG content with all non-allowlisted elements and attributes removed
     """
     if not svg_content or not svg_content.strip():
         return ""
 
-    # Minimal protection: remove obvious malicious content, preserve all SVG features
-    content = re.sub(
-        r"<script[^>]*>.*?</script>", "", svg_content, flags=re.IGNORECASE | re.DOTALL
-    )
-    content = re.sub(r"javascript:", "", content, flags=re.IGNORECASE)
-    content = re.sub(r"data:[^;]*;[^,]*,.*javascript", "", content, flags=re.IGNORECASE)
+    safe_svg_tags = {
+        "svg",
+        "g",
+        "path",
+        "circle",
+        "ellipse",
+        "rect",
+        "line",
+        "polyline",
+        "polygon",
+        "text",
+        "tspan",
+        "defs",
+        "clipPath",
+        "mask",
+        "use",
+        "symbol",
+        "linearGradient",
+        "radialGradient",
+        "stop",
+        "filter",
+        "feGaussianBlur",
+        "feOffset",
+        "feBlend",
+        "feFlood",
+        "feComposite",
+        "feMerge",
+        "feMergeNode",
+        "title",
+        "desc",
+        "animate",
+        "animateTransform",
+        "animateMotion",
+        "set",
+        "pattern",
+        "image",
+        "marker",
+        "metadata",
+    }
 
-    # Remove event handlers (simple catch-all approach)
-    content = re.sub(r"\bon\w+\s*=", "", content, flags=re.IGNORECASE)
+    safe_svg_attrs = {
+        "*": {
+            "id",
+            "class",
+            "style",
+            "transform",
+            "opacity",
+            "fill",
+            "stroke",
+            "stroke-width",
+            "stroke-linecap",
+            "stroke-linejoin",
+            "stroke-dasharray",
+            "stroke-dashoffset",
+            "stroke-opacity",
+            "fill-opacity",
+            "fill-rule",
+            "clip-path",
+            "clip-rule",
+            "mask",
+            "filter",
+            "display",
+            "visibility",
+            "color",
+            "font-family",
+            "font-size",
+            "font-weight",
+            "font-style",
+            "text-anchor",
+            "text-decoration",
+            "dominant-baseline",
+            "alignment-baseline",
+            "letter-spacing",
+            "word-spacing",
+        },
+        "svg": {
+            "xmlns",
+            "xmlns:xlink",
+            "viewBox",
+            "width",
+            "height",
+            "preserveAspectRatio",
+            "version",
+            "x",
+            "y",
+        },
+        "path": {"d"},
+        "circle": {"cx", "cy", "r"},
+        "ellipse": {"cx", "cy", "rx", "ry"},
+        "rect": {"x", "y", "width", "height", "rx", "ry"},
+        "line": {"x1", "y1", "x2", "y2"},
+        "polyline": {"points"},
+        "polygon": {"points"},
+        "text": {"x", "y", "dx", "dy", "rotate", "textLength", "lengthAdjust"},
+        "tspan": {"x", "y", "dx", "dy", "rotate", "textLength", "lengthAdjust"},
+        "use": {"href", "x", "y", "width", "height"},
+        "image": {"href", "x", "y", "width", "height", "preserveAspectRatio"},
+        "linearGradient": {
+            "x1",
+            "y1",
+            "x2",
+            "y2",
+            "gradientUnits",
+            "gradientTransform",
+            "spreadMethod",
+        },
+        "radialGradient": {
+            "cx",
+            "cy",
+            "r",
+            "fx",
+            "fy",
+            "gradientUnits",
+            "gradientTransform",
+            "spreadMethod",
+        },
+        "stop": {"offset", "stop-color", "stop-opacity"},
+        "clipPath": {"clipPathUnits"},
+        "mask": {"x", "y", "width", "height", "maskUnits", "maskContentUnits"},
+        "pattern": {
+            "x",
+            "y",
+            "width",
+            "height",
+            "patternUnits",
+            "patternContentUnits",
+            "patternTransform",
+        },
+        "filter": {"x", "y", "width", "height", "filterUnits", "primitiveUnits"},
+        "feGaussianBlur": {"in", "stdDeviation", "result"},
+        "feOffset": {"in", "dx", "dy", "result"},
+        "feBlend": {"in", "in2", "mode", "result"},
+        "feFlood": {"flood-color", "flood-opacity", "result"},
+        "feComposite": {"in", "in2", "operator", "k1", "k2", "k3", "k4", "result"},
+        "feMerge": {"result"},
+        "feMergeNode": {"in"},
+        "animate": {
+            "attributeName",
+            "from",
+            "to",
+            "dur",
+            "repeatCount",
+            "begin",
+            "end",
+            "values",
+            "keyTimes",
+            "calcMode",
+        },
+        "animateTransform": {
+            "attributeName",
+            "type",
+            "from",
+            "to",
+            "dur",
+            "repeatCount",
+            "begin",
+            "end",
+            "values",
+        },
+        "animateMotion": {"dur", "repeatCount", "begin", "end", "path", "keyPoints"},
+        "set": {"attributeName", "to", "begin", "dur", "end"},
+        "marker": {
+            "markerWidth",
+            "markerHeight",
+            "refX",
+            "refY",
+            "orient",
+            "markerUnits",
+        },
+        "symbol": {"viewBox", "preserveAspectRatio"},
+    }
 
-    # Remove other suspicious patterns
-    content = re.sub(
-        r"<iframe[^>]*>.*?</iframe>", "", content, flags=re.IGNORECASE | re.DOTALL
+    return nh3.clean(
+        svg_content,
+        tags=safe_svg_tags,
+        attributes=safe_svg_attrs,
+        url_schemes={"http", "https", "data"},
     )
-    content = re.sub(
-        r"<object[^>]*>.*?</object>", "", content, flags=re.IGNORECASE | re.DOTALL
-    )
-    content = re.sub(r"<embed[^>]*>", "", content, flags=re.IGNORECASE)
-
-    return content
 
 
 def sanitize_url(url: str) -> str:
