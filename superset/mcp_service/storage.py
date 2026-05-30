@@ -145,7 +145,7 @@ def _create_redis_store(
                 ssl=True,
                 ssl_cert_reqs="none",
             )
-            logger.info("Created async Redis client with SSL at %s", parsed.hostname)
+            logger.info("Created async Redis client with SSL")
         else:
             redis_client = Redis(
                 host=parsed.hostname or "localhost",
@@ -155,7 +155,7 @@ def _create_redis_store(
                 password=parsed.password,
                 decode_responses=True,
             )
-            logger.info("Created async Redis client at %s", parsed.hostname)
+            logger.info("Created async Redis client")
 
         # Pass pre-configured client to RedisStore
         redis_store = RedisStore(client=redis_client)
@@ -178,8 +178,10 @@ def _create_redis_store(
         store = wrapper_class(key_value=redis_store, prefix=prefix)
         logger.info("Created wrapped MCP RedisStore")
         return store
-    except Exception as e:
-        logger.error("Failed to create MCP store: %s", e)
+    except Exception:
+        logger.error(
+            "Failed to create MCP store – check CACHE_REDIS_URL and Redis connectivity"
+        )
         return None
 
 
