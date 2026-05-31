@@ -48,7 +48,23 @@ class TestRedirectView(SupersetTestCase):
             follow_redirects=False,
         )
         assert resp.status_code == 302
-        assert resp.headers["Location"] == "http://localhost:8088/dashboard/1"
+        # Redirect uses only the path component to prevent open-redirect attacks
+        assert resp.headers["Location"] == "/dashboard/1"
+
+    @with_feature_flags(ALERT_REPORTS=True)
+    @with_config(REDIRECT_CONFIG)
+    def test_internal_url_with_double_slash_path_is_collapsed(self):
+        """Paths with leading // must not produce a protocol-relative redirect."""
+        resp = self.client.get(
+            "/redirect/?url=http://localhost:8088//evil.com/steal",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        location = resp.headers["Location"]
+        assert not location.startswith("//"), (
+            f"Location must not be protocol-relative, got {location!r}"
+        )
+        assert location.startswith("/")
 
     @with_feature_flags(ALERT_REPORTS=True)
     @with_config(REDIRECT_CONFIG)

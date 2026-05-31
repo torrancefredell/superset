@@ -24,7 +24,8 @@ via the React ``RedirectWarning`` page.
 """
 
 import logging
-from urllib.parse import urlparse
+import re
+from urllib.parse import urlparse, urlunparse
 
 from flask import abort, redirect, request
 from flask_appbuilder import expose
@@ -68,9 +69,16 @@ class RedirectView(BaseSupersetView):
             logger.warning("Blocked dangerous URL scheme: %s", target_url[:80])
             abort(400, description="Invalid URL scheme")
 
-        # Internal URLs redirect immediately
+        # Internal URLs: redirect to the path component only, preventing
+        # open-redirect via URL parsing differentials.
         if is_safe_redirect_url(target_url):
-            return redirect(target_url)
+            safe_path = urlunparse(
+                ("", "", parsed.path, parsed.params, parsed.query, parsed.fragment)
+            )
+            # Collapse multiple leading slashes to one so browsers never
+            # interpret the Location header as a protocol-relative URL.
+            safe_path = re.sub(r"^/{2,}", "/", safe_path)
+            return redirect(safe_path or "/")
 
         # External URLs: render the React warning page
         return super().render_app_template()
