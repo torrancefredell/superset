@@ -24,6 +24,7 @@ via the React ``RedirectWarning`` page.
 """
 
 import logging
+import re
 from urllib.parse import urlparse, urlunparse
 
 from flask import abort, redirect, request
@@ -74,6 +75,9 @@ class RedirectView(BaseSupersetView):
             safe_path = urlunparse(
                 ("", "", parsed.path, parsed.params, parsed.query, parsed.fragment)
             )
+            # Collapse multiple leading slashes to one so browsers never
+            # interpret the Location header as a protocol-relative URL.
+            safe_path = re.sub(r"^/{2,}", "/", safe_path)
             return redirect(safe_path or "/")
 
         # External URLs: render the React warning page
